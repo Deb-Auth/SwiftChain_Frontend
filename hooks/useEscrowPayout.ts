@@ -46,7 +46,9 @@ export const useEscrowPayout = (escrowId: string) => {
     [feeQuote],
   );
 
-  const { mutate: releaseFunds, isPending: isReleasing } = useMutation({
+  // mutateAsync so callers can await the promise and catch errors directly
+  // (fire-and-forget mutate() returns void, swallowing mutation errors).
+  const { mutateAsync: releaseFunds, isPending: isReleasing } = useMutation({
     mutationFn: () => escrowService.releaseFunds(escrowId),
     onSuccess: (data) => {
       toast({
