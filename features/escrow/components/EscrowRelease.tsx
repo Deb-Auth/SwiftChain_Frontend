@@ -161,6 +161,7 @@ function ConfirmModal({
             Yes, Release Payment
           </button>
         </div>
+        </div>
       </ModalFocusTrap>
     </>
   );
