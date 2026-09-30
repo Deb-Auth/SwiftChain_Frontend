@@ -153,6 +153,7 @@ function ConfirmationDialog({
             )}
           </button>
         </div>
+        </div>
       </ModalFocusTrap>
     </>
   );
