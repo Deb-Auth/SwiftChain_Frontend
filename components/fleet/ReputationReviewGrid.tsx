@@ -1,168 +1,185 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { StarIcon, ShieldCheckIcon } from '@heroicons/react/24/solid';
-import { useDriverReviews } from '@/hooks/useDriverReviews';
-import type {
-  DriverReviewFilters,
-  ReviewDateRange,
-  ReviewSort,
-} from '@/types/driverReview';
-
-export const DEFAULT_REVIEW_FILTERS: DriverReviewFilters = {
-  minRating: null,
-  dateRange: 'all',
-  verifiedOnly: false,
-  sort: 'date_desc',
-};
+import { useReputationReviews } from '@/hooks/useReputationReviews';
+import type { RatingFilter, ReputationReview } from '@/types/reputationReview';
 
 interface ReputationReviewGridProps {
   driverId: string;
 }
 
-export function ReputationReviewGrid({ driverId }: ReputationReviewGridProps) {
-  const [filters, setFilters] = useState<DriverReviewFilters>(DEFAULT_REVIEW_FILTERS);
-  const { reviews, isLoading, error, hasNextPage, isFetchingNextPage, fetchNextPage, refetch } =
-    useDriverReviews(driverId, filters);
+function StarRating({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-0.5" aria-label={`${rating} out of 5 stars`}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <StarIcon
+          key={i}
+          className={`h-4 w-4 ${i < rating ? 'text-amber-500' : 'text-gray-200'}`}
+        />
+      ))}
+    </div>
+  );
+}
 
-  const selectClass =
-    'rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800';
+function ReviewCard({ review }: { review: ReputationReview }) {
+  const initials = review.reviewerName
+    .split(' ')
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
   return (
-    <section aria-label="Driver reviews" className="space-y-4">
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="review-rating" className="text-xs font-medium text-gray-600">
-            Minimum rating
-          </label>
-          <select
-            id="review-rating"
-            className={selectClass}
-            value={filters.minRating ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                minRating: e.target.value ? Number(e.target.value) : null,
-              }))
+    <li className="flex flex-col gap-3 rounded-md border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3">
+          {review.reviewerAvatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={review.reviewerAvatarUrl}
+              alt={review.reviewerName}
+              className="h-9 w-9 rounded-full object-cover"
+            />
+          ) : (
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
+              {initials}
+            </div>
+          )}
+          <div>
+            <p className="text-sm font-medium text-gray-900">{review.reviewerName}</p>
+            <p className="text-xs text-gray-500">
+              {new Date(review.createdAt).toLocaleDateString()}
+            </p>
+          </div>
+        </div>
+
+        {review.isOnChainVerified && (
+          <span
+            className="flex shrink-0 items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"
+            title={
+              review.onChainTransactionHash
+                ? `Verified on-chain: ${review.onChainTransactionHash}`
+                : 'Verified on-chain'
             }
           >
-            <option value="">All ratings</option>
-            {[5, 4, 3, 2, 1].map((n) => (
-              <option key={n} value={n}>
-                {n}+ stars
+            <ShieldCheckIcon className="h-3.5 w-3.5" />
+            On-chain
+          </span>
+        )}
+      </div>
+
+      <StarRating rating={review.rating} />
+
+      <p className="text-sm text-gray-600">{review.feedback}</p>
+    </li>
+  );
+}
+
+const RATING_OPTIONS: { value: RatingFilter; label: string }[] = [
+  { value: 'all', label: 'All ratings' },
+  { value: 5, label: '5 stars' },
+  { value: 4, label: '4+ stars' },
+  { value: 3, label: '3+ stars' },
+];
+
+/**
+ * ReputationReviewGrid — grid of driver/customer reviews with on-chain
+ * verification badges, filterable by rating, date range, and verified-only.
+ */
+export function ReputationReviewGrid({ driverId }: ReputationReviewGridProps) {
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+
+  const { reviews, averageRating, totalCount, isLoading, error } =
+    useReputationReviews(driverId, {
+      rating: ratingFilter,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      verifiedOnly,
+    });
+
+  return (
+    <section aria-label="Driver reviews" className="rounded-md border border-gray-200 bg-white">
+      <header className="flex flex-col gap-4 border-b border-gray-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Driver Reviews</h2>
+          <p className="text-xs text-gray-500">
+            {totalCount} review{totalCount === 1 ? '' : 's'} · {averageRating.toFixed(1)} average
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="rating-filter" className="sr-only">
+            Filter by rating
+          </label>
+          <select
+            id="rating-filter"
+            value={ratingFilter}
+            onChange={(e) =>
+              setRatingFilter(
+                e.target.value === 'all' ? 'all' : (Number(e.target.value) as RatingFilter)
+              )
+            }
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+          >
+            {RATING_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>
-        </div>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="review-date" className="text-xs font-medium text-gray-600">
-            Date range
+          <label htmlFor="from-date" className="sr-only">
+            From date
           </label>
-          <select
-            id="review-date"
-            className={selectClass}
-            value={filters.dateRange}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, dateRange: e.target.value as ReviewDateRange }))
-            }
-          >
-            <option value="all">All time</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="review-sort" className="text-xs font-medium text-gray-600">
-            Sort by
-          </label>
-          <select
-            id="review-sort"
-            className={selectClass}
-            value={filters.sort}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, sort: e.target.value as ReviewSort }))
-            }
-          >
-            <option value="date_desc">Newest first</option>
-            <option value="date_asc">Oldest first</option>
-            <option value="rating_desc">Highest rating</option>
-            <option value="rating_asc">Lowest rating</option>
-          </select>
-        </div>
-
-        <label className="flex items-center gap-2 text-sm text-gray-700">
           <input
-            type="checkbox"
-            checked={filters.verifiedOnly}
-            onChange={(e) => setFilters((f) => ({ ...f, verifiedOnly: e.target.checked }))}
+            id="from-date"
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm"
           />
-          Verified only
-        </label>
-      </div>
+
+          <label htmlFor="to-date" className="sr-only">
+            To date
+          </label>
+          <input
+            id="to-date"
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+          />
+
+          <label className="flex items-center gap-1.5 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={verifiedOnly}
+              onChange={(e) => setVerifiedOnly(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            Verified only
+          </label>
+        </div>
+      </header>
 
       {isLoading ? (
-        <p role="status" className="text-sm text-gray-500">
-          Loading reviews...
-        </p>
+        <div className="p-6 text-center text-sm text-gray-500">Loading reviews…</div>
       ) : error ? (
-        <div role="alert" className="space-y-2 text-sm text-red-600">
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={refetch}
-            className="rounded-md border border-red-300 px-3 py-1 text-red-700"
-          >
-            Retry
-          </button>
-        </div>
+        <div className="p-6 text-center text-sm text-red-600">{error}</div>
       ) : reviews.length === 0 ? (
-        <p className="text-sm text-gray-500">No reviews match your filters.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {reviews.map((review) => (
-            <article
-              key={review.id}
-              className="space-y-2 rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900">{review.reviewerName}</h3>
-                <span
-                  className="flex items-center gap-1 text-sm text-amber-600"
-                  aria-label={`Rated ${review.rating} out of 5`}
-                >
-                  <StarIcon className="h-4 w-4" aria-hidden="true" />
-                  {review.rating}
-                </span>
-              </div>
-              <p className="text-sm text-gray-700">{review.comment}</p>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <time dateTime={review.createdAt}>
-                  {new Date(review.createdAt).toLocaleDateString('en-US')}
-                </time>
-                {review.verified && (
-                  <span className="flex items-center gap-1 text-blue-700">
-                    <ShieldCheckIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                    Verified
-                  </span>
-                )}
-              </div>
-            </article>
-          ))}
+        <div className="p-6 text-center text-sm text-gray-500">
+          No reviews match the current filters.
         </div>
-      )}
-
-      {hasNextPage && !isLoading && !error && (
-        <button
-          type="button"
-          onClick={fetchNextPage}
-          disabled={isFetchingNextPage}
-          className="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {isFetchingNextPage ? 'Loading more...' : 'Load more'}
-        </button>
+      ) : (
+        <ul role="list" className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
+          {reviews.map((review) => (
+            <ReviewCard key={review.id} review={review} />
+          ))}
+        </ul>
       )}
     </section>
   );
