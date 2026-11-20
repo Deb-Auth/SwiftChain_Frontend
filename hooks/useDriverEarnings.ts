@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { invalidateWalletData } from '@/lib/cacheInvalidation';
 import { driverEarningsService } from '@/services/driverEarningsService';
 import { fxService, formatNgn } from '@/services/fxService';
 import type {
@@ -78,11 +79,7 @@ export function useDriverEarnings(): UseDriverEarningsResult {
   });
 
   const invalidateEarnings = useCallback(
-    () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: driverEarningsKeys.summary }),
-        queryClient.invalidateQueries({ queryKey: driverEarningsKeys.payouts }),
-      ]).then(() => undefined),
+    () => invalidateWalletData(queryClient),
     [queryClient],
   );
 

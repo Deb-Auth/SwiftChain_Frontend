@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { invalidateDeliveryData } from '@/lib/cacheInvalidation';
 import { shipmentHandoffService } from '@/services/shipmentHandoffService';
 import type { HandoffQRData } from '@/types/shipment';
 import { useToast } from '@/hooks/useToast';
@@ -44,12 +45,7 @@ export function useVerifyHandoffQR() {
       shipmentHandoffService.verifyHandoffQR(deliveryId, token),
     onSuccess: (data) => {
       // Invalidate related queries
-      queryClient.invalidateQueries({
-        queryKey: ['deliveries'],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['delivery', data.id],
-      });
+      void invalidateDeliveryData(queryClient, { deliveryId: data.id });
       toast({ variant: 'success', message: 'Handoff verified successfully!' });
     },
     onError: (error) => {

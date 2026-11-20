@@ -2,6 +2,7 @@
 
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { invalidateDeliveryData } from '@/lib/cacheInvalidation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { deliveriesService, type CreateDeliveryPayload } from '@/services/deliveries.service';
@@ -63,7 +64,7 @@ export function useCreateDelivery(): UseCreateDeliveryReturn {
     mutationFn: (payload: CreateDeliveryPayload) =>
       deliveriesService.createDelivery(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      void invalidateDeliveryData(queryClient);
       success('Delivery request sent', 'Your logistics request was created successfully.');
       form.reset();
     },

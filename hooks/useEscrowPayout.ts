@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { invalidateAfterEscrowMutation } from '@/lib/cacheInvalidation';
 import { escrowService } from '@/services/escrowService';
 import { escrowPayoutService } from '@/services/escrowPayoutService';
 import { calculatePayoutBreakdown } from '@/lib/payoutBreakdown';
@@ -56,8 +57,7 @@ export const useEscrowPayout = (escrowId: string) => {
         description: `Transaction: ${data.transactionHash.substring(0, 10)}...`,
       });
       // Refetch the escrow details to update the UI state
-      queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: feeQuoteKey });
+      void invalidateAfterEscrowMutation(queryClient, { escrowId });
     },
     onError: (err: Error) => {
       toast({

@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { invalidateDeliveryData, invalidateWalletData } from '@/lib/cacheInvalidation';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   shipmentService,
   type Shipment,
@@ -11,7 +13,7 @@ import {
  * Cache key factory for shipment queries.
  * Exported so components/tests can invalidate or seed the same key.
  */
-export const shipmentQueryKey = (id: string) => ['shipment', id] as const;
+export const shipmentQueryKey = (id: string) => queryKeys.shipments.detail(id);
 
 interface UseCancelShipmentResult {
   shipment: Shipment | undefined;
@@ -59,9 +61,9 @@ export function useCancelShipment(shipmentId: string): UseCancelShipmentResult {
         response.message ||
           'Shipment cancelled. Escrow refund is being processed and may take a few minutes to reflect.'
       );
-      queryClient.invalidateQueries({
-        queryKey: shipmentQueryKey(shipmentId),
-      });
+      // A cancellation refunds escrow, so wallet balances are stale too.
+      void invalidateDeliveryData(queryClient, { shipmentId });
+      void invalidateWalletData(queryClient);
     },
     onError: (error: unknown) => {
       const message =
