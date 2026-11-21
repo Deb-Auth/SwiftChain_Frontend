@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { escrowService } from '@/services/escrowService';
+import { track } from '@/lib/analytics';
 import type { EscrowDetails } from '@/types/escrow';
 
 export type ReleaseStep = 'idle' | 'confirming' | 'signing' | 'releasing' | 'done';
@@ -71,6 +72,7 @@ export function useEscrowRelease(): UseEscrowReleaseReturn {
           throw new Error(result.message ?? 'Release failed.');
         }
 
+        track('escrow_release_succeeded', { escrowId, deliveryId });
         setTransactionHash(result.transactionHash ?? null);
         setStep('done');
         toast.success(
@@ -82,6 +84,7 @@ export function useEscrowRelease(): UseEscrowReleaseReturn {
           prev ? { ...prev, isReleased: true } : prev
         );
       } catch (err: unknown) {
+        track('escrow_release_failed', { escrowId, deliveryId });
         setStep('idle');
         const message =
           err instanceof Error

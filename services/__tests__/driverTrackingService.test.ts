@@ -14,6 +14,7 @@ import {
   type DriverLocationUpdate,
   type DriverTrackingSubscriber,
 } from '@/services/driverTrackingService';
+import { registerAnalyticsSink, resetAnalyticsForTests } from '@/lib/analytics';
 
 // Mock WebSocket
 class MockWebSocket {
@@ -83,6 +84,27 @@ afterEach(() => {
 });
 
 describe('DriverTrackingService', () => {
+  describe('connection analytics', () => {
+    it('records one tracking_connection_changed event per transition, regardless of subscriber count', () => {
+      resetAnalyticsForTests();
+      Object.defineProperty(navigator, 'doNotTrack', { value: null, configurable: true });
+      const sink = jest.fn();
+      registerAnalyticsSink(sink);
+
+      driverTrackingService.subscribe({ onLocationUpdate: jest.fn() });
+      driverTrackingService.subscribe({ onLocationUpdate: jest.fn() });
+      driverTrackingService.connect();
+      mockWebSocket.simulateOpen();
+
+      const connected = sink.mock.calls.filter(
+        ([event]) =>
+          event.name === 'tracking_connection_changed' &&
+          event.properties.status === 'connected',
+      );
+      expect(connected).toHaveLength(1);
+    });
+  });
+
   describe('subscribe and connect', () => {
     it('should subscribe a subscriber', () => {
       const subscriber: DriverTrackingSubscriber = {

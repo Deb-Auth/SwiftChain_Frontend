@@ -13,6 +13,7 @@ jest.mock('axios', () => ({
 }));
 
 import httpClient from '@/lib/httpClient';
+import { registerAnalyticsSink, resetAnalyticsForTests } from '@/lib/analytics';
 
 describe('httpClient', () => {
   beforeEach(() => {
@@ -34,5 +35,51 @@ describe('httpClient', () => {
     const config = requestInterceptor({ headers: {} });
 
     expect(config.headers.Authorization).toBe('Bearer token-123');
+  });
+
+  describe('failed request analytics', () => {
+    const rejectedHandler = () =>
+      responseUse.mock.calls[0][1] as (error: unknown) => Promise<never>;
+
+    beforeEach(() => {
+      resetAnalyticsForTests();
+    });
+
+    it('records api_request_failed with method, masked path and status only', async () => {
+      const sink = jest.fn();
+      registerAnalyticsSink(sink);
+
+      await expect(
+        rejectedHandler()({
+          config: { method: 'post', url: '/escrow/12345/release?token=secret' },
+          response: { status: 500 },
+        }),
+      ).rejects.toBeDefined();
+
+      expect(sink).toHaveBeenCalledTimes(1);
+      const event = sink.mock.calls[0][0];
+      expect(event.name).toBe('api_request_failed');
+      expect(event.properties).toEqual({
+        method: 'POST',
+        path: '/escrow/:id/release',
+        status: 500,
+      });
+      expect(JSON.stringify(event)).not.toContain('secret');
+    });
+
+    it('records network failures that have no response', async () => {
+      const sink = jest.fn();
+      registerAnalyticsSink(sink);
+
+      await expect(
+        rejectedHandler()({ config: { url: '/deliveries' } }),
+      ).rejects.toBeDefined();
+
+      expect(sink.mock.calls[0][0].properties).toEqual({
+        method: 'GET',
+        path: '/deliveries',
+        status: 'network_error',
+      });
+    });
   });
 });

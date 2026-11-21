@@ -4,6 +4,7 @@ import axios, {
   type AxiosResponse,
   type InternalAxiosRequestConfig,
 } from 'axios';
+import { normalizeApiPath, track } from '@/lib/analytics';
 
 /**
  * The application's single HTTP client. Services should import this module
@@ -38,6 +39,14 @@ if (httpClient.interceptors?.request && httpClient.interceptors?.response) {
   httpClient.interceptors.response.use(
     (response: AxiosResponse) => response,
     (error: AxiosError) => {
+      if (!axios.isCancel?.(error)) {
+        track('api_request_failed', {
+          method: (error.config?.method ?? 'get').toUpperCase(),
+          path: normalizeApiPath(error.config?.url),
+          status: error.response?.status ?? 'network_error',
+        });
+      }
+
       if (error.response?.status === 401 && typeof window !== 'undefined') {
         localStorage.removeItem('authToken');
         window.location.assign('/login');

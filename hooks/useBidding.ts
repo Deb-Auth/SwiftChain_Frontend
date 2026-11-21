@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { biddingService } from '@/services/biddingService';
 import { Contract, Bid, SubmitBidPayload, SubmitBidResponse } from '@/types/bidding';
 import { useToast } from '@/hooks/useToast';
+import { track } from '@/lib/analytics';
 
 const BID_STATUS_POLL_INTERVAL = 10000; // 10 seconds
 
@@ -55,7 +56,8 @@ export function useBidding() {
 
   const submitBidMutation = useMutation<SubmitBidResponse, Error, SubmitBidPayload>({
     mutationFn: (payload) => biddingService.submitBid(payload),
-    onSuccess: (response) => {
+    onSuccess: (response, variables) => {
+      track('bid_submitted', { contractId: variables.contractId });
       queryClient.invalidateQueries({ queryKey: ['bidding', 'history'] });
       success(
         'Bid submitted',

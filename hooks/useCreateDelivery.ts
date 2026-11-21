@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { deliveriesService, type CreateDeliveryPayload } from '@/services/deliveries.service';
 import { useToast } from '@/hooks/useToast';
+import { track } from '@/lib/analytics';
 
 export const createDeliverySchema = z.object({
   pickupAddress: z
@@ -62,7 +63,8 @@ export function useCreateDelivery(): UseCreateDeliveryReturn {
   const createDelivery = useMutation({
     mutationFn: (payload: CreateDeliveryPayload) =>
       deliveriesService.createDelivery(payload),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      track('delivery_request_created', { packageSize: variables.packageSize });
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
       success('Delivery request sent', 'Your logistics request was created successfully.');
       form.reset();

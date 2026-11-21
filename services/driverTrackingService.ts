@@ -8,6 +8,8 @@
  * without leaking raw WebSocket API details (readyState, onmessage, etc.).
  */
 
+import { track } from '@/lib/analytics';
+
 export interface DriverLocationUpdate {
   driverId: string;
   lat: number;
@@ -215,6 +217,11 @@ class DriverTrackingService {
     event: 'connected' | 'disconnected' | 'reconnecting' | 'error',
     errorMessage?: string,
   ): void {
+    // Recorded once per transition here, not once per subscribed marker.
+    if (event !== 'error') {
+      track('tracking_connection_changed', { status: event });
+    }
+
     for (const subscriber of this.subscribers) {
       try {
         switch (event) {
