@@ -136,6 +136,20 @@ describe('FleetMapClient', () => {
       expect(lng).toBeCloseTo(3.45, 5);
     });
 
+    it('skips drivers with invalid coordinates so the map still renders', () => {
+      const broken = driver('bad', NaN, 3.4);
+      const outOfRange = driver('oor', 120, 3.4);
+
+      render(<FleetMapClient drivers={[LAGOS_A, broken, outOfRange]} />);
+
+      expect(screen.getAllByTestId('cluster-marker')).toHaveLength(1);
+      // Centre is unaffected by the dropped drivers
+      expect(screen.getByTestId('map-container')).toHaveAttribute(
+        'data-center',
+        '6.51,3.41',
+      );
+    });
+
     it('falls back to the default centre when there are no drivers', () => {
       render(<FleetMapClient drivers={[]} />);
 

@@ -12,6 +12,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cellSizeForZoom, clusterDrivers } from './clustering';
 import { useRouteOptimization } from '@/hooks/useRouteOptimization';
+import { isValidCoordinate } from '@/lib/mapViewport';
 import type { Driver } from '@/types/fleet';
 import type {
   OptimizerWaypoint,
@@ -31,6 +32,16 @@ export interface FleetMapClientProps {
 const DEFAULT_CENTER: [number, number] = [9.082, 8.6753]; // Nigeria centroid
 const INITIAL_ZOOM = 6;
 const DEFAULT_SNAP_RADIUS_DEGREES = 0.25;
+
+/**
+ * Drops drivers whose telemetry has no usable position. Leaflet throws on
+ * NaN/out-of-range coordinates, which would otherwise blank the whole map.
+ */
+export function filterDriversWithValidLocation(drivers: Driver[]): Driver[] {
+  return drivers.filter((d) =>
+    isValidCoordinate({ latitude: d?.location?.lat, longitude: d?.location?.lng }),
+  );
+}
 
 function pickCenter(
   drivers: Driver[],
@@ -393,9 +404,13 @@ export default function FleetMapClient({
   onWaypointReorder,
   snapRadiusDegrees = DEFAULT_SNAP_RADIUS_DEGREES,
 }: FleetMapClientProps) {
+  const mappableDrivers = useMemo(
+    () => filterDriversWithValidLocation(drivers),
+    [drivers],
+  );
   const center = useMemo(
-    () => pickCenter(drivers, waypoints),
-    [drivers, waypoints],
+    () => pickCenter(mappableDrivers, waypoints),
+    [mappableDrivers, waypoints],
   );
 
   // Ensure Leaflet picks up the CSS-loaded marker icons in environments
@@ -418,7 +433,7 @@ export default function FleetMapClient({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <DriverClusterLayer drivers={drivers} />
+      <DriverClusterLayer drivers={mappableDrivers} />
       {waypoints && waypoints.length > 0 && (
         <WaypointDragDropLayer
           waypoints={waypoints}

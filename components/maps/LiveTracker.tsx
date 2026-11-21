@@ -34,7 +34,7 @@ export function LiveTracker({
   markerColor = '#10b981',
   markerFillColor = '#34d399',
 }: LiveTrackerProps): React.ReactElement {
-  const { position, connectionStatus, error } =
+  const { position, hasLocation, connectionStatus, error } =
     useDriverLocationSocket(driver.id);
 
   // Memoize to avoid unnecessary re-renders of the marker
@@ -43,10 +43,11 @@ export function LiveTracker({
     [position.lat, position.lng],
   );
 
-  // Notify caller of location updates
+  // Notify caller of location updates (never for the pre-fix placeholder)
   React.useEffect(() => {
+    if (!hasLocation) return;
     onLocationUpdate?.(position.lat, position.lng);
-  }, [position.lat, position.lng, onLocationUpdate]);
+  }, [hasLocation, position.lat, position.lng, onLocationUpdate]);
 
   // Determine marker styling based on connection status
   const markerOpacity = connectionStatus === 'connected' ? 0.9 : 0.5;
@@ -65,6 +66,12 @@ export function LiveTracker({
     }
     return text;
   }, [driver.name, connectionStatus, error]);
+
+  // Loading guard: before the first fix the position is a (0, 0) placeholder,
+  // which would draw the driver in the middle of the ocean.
+  if (!hasLocation) {
+    return <></>;
+  }
 
   return (
     <CircleMarker

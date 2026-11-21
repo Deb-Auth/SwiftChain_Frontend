@@ -77,10 +77,44 @@ beforeEach(() => {
 });
 
 describe('LiveTracker Component', () => {
+  describe('loading guard', () => {
+    it('renders no marker until the first location fix arrives', () => {
+      mockUseDriverLocationSocket.mockReturnValue({
+        position: { lat: 0, lng: 0 },
+        hasLocation: false,
+        connectionStatus: 'connected',
+        error: null,
+      });
+
+      render(<LiveTracker driver={mockDriver} />);
+
+      expect(
+        screen.queryByTestId('marker-live-tracker-driver-123'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not report the placeholder position through onLocationUpdate', () => {
+      const onLocationUpdate = jest.fn();
+      mockUseDriverLocationSocket.mockReturnValue({
+        position: { lat: 0, lng: 0 },
+        hasLocation: false,
+        connectionStatus: 'connected',
+        error: null,
+      });
+
+      render(
+        <LiveTracker driver={mockDriver} onLocationUpdate={onLocationUpdate} />,
+      );
+
+      expect(onLocationUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('rendering', () => {
     it('should render a CircleMarker with driver coordinates', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -95,6 +129,7 @@ describe('LiveTracker Component', () => {
     it('should render marker with default styling', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -110,6 +145,7 @@ describe('LiveTracker Component', () => {
     it('should render a Tooltip with driver name', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -125,6 +161,7 @@ describe('LiveTracker Component', () => {
     it('should update marker position when hook returns new coordinates', async () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -137,6 +174,7 @@ describe('LiveTracker Component', () => {
       // Update hook return value
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.53, lng: 3.38 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -152,6 +190,7 @@ describe('LiveTracker Component', () => {
 
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -169,6 +208,7 @@ describe('LiveTracker Component', () => {
       // Update position
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.53, lng: 3.38 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -185,6 +225,7 @@ describe('LiveTracker Component', () => {
 
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -209,6 +250,7 @@ describe('LiveTracker Component', () => {
     it('should show full opacity when connected', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -222,6 +264,7 @@ describe('LiveTracker Component', () => {
     it('should show reduced opacity when disconnected', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'disconnected',
         error: null,
       });
@@ -235,6 +278,7 @@ describe('LiveTracker Component', () => {
     it('should show amber stroke when reconnecting', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'reconnecting',
         error: null,
       });
@@ -248,6 +292,7 @@ describe('LiveTracker Component', () => {
     it('should display reconnecting status in tooltip', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'reconnecting',
         error: null,
       });
@@ -261,6 +306,7 @@ describe('LiveTracker Component', () => {
     it('should display offline status in tooltip', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'disconnected',
         error: null,
       });
@@ -274,6 +320,7 @@ describe('LiveTracker Component', () => {
     it('should display error message in tooltip', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'disconnected',
         error: 'WebSocket connection lost',
       });
@@ -289,6 +336,7 @@ describe('LiveTracker Component', () => {
     it('should set data-connection-status attribute', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'reconnecting',
         error: null,
       });
@@ -304,6 +352,7 @@ describe('LiveTracker Component', () => {
     it('should apply custom marker color', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -324,6 +373,7 @@ describe('LiveTracker Component', () => {
     it('should respect custom marker color but show amber when reconnecting', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'reconnecting',
         error: null,
       });
@@ -348,6 +398,7 @@ describe('LiveTracker Component', () => {
     it('should call useDriverLocationSocket with driver id', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -360,6 +411,7 @@ describe('LiveTracker Component', () => {
     it('should update hook call when driver changes', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -384,6 +436,7 @@ describe('LiveTracker Component', () => {
     it('should have consistent marker radius', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -397,6 +450,7 @@ describe('LiveTracker Component', () => {
     it('should have consistent marker weight', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -412,6 +466,7 @@ describe('LiveTracker Component', () => {
     it('should render multiple LiveTracker instances independently', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });
@@ -442,6 +497,7 @@ describe('LiveTracker Component', () => {
     it('should render gracefully with null position', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: NaN, lng: NaN },
+        hasLocation: true,
         connectionStatus: 'disconnected',
         error: 'Connection lost',
       });
@@ -455,6 +511,7 @@ describe('LiveTracker Component', () => {
     it('should handle missing onLocationUpdate callback', () => {
       mockUseDriverLocationSocket.mockReturnValue({
         position: { lat: 6.5244, lng: 3.3792 },
+        hasLocation: true,
         connectionStatus: 'connected',
         error: null,
       });

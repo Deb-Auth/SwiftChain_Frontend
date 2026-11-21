@@ -28,10 +28,13 @@ const mockUseTrackingRoute = useTrackingRoute as jest.MockedFunction<
   typeof useTrackingRoute
 >;
 
+jest.mock('leaflet/dist/leaflet.css', () => ({}));
+
 jest.mock('leaflet', () => ({
   __esModule: true,
   default: {
     icon: jest.fn((opts) => opts),
+    Icon: { Default: { prototype: {} } },
     latLngBounds: jest.fn((sw, ne) => ({ sw, ne })),
   },
 }));

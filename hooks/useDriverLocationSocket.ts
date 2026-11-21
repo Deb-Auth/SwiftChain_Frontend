@@ -16,6 +16,11 @@ export interface InterpolatedLocation {
 export interface DriverLocationSocketState {
   /** Current interpolated coordinates for the driver. */
   position: InterpolatedLocation;
+  /**
+   * True once a real location fix has been received for the current driver.
+   * Until then `position` is a placeholder (0, 0) that must not be rendered.
+   */
+  hasLocation: boolean;
   /** Connection status to the tracking service. */
   connectionStatus: ConnectionStatus;
   /** Any error message from the connection. */
@@ -27,6 +32,19 @@ interface LocationState {
   target: InterpolatedLocation;
   lastUpdateTime: number;
   animationFrameId: number | null;
+  /** Whether a first fix has arrived for the currently subscribed driver. */
+  hasFix: boolean;
+}
+
+const ORIGIN_PLACEHOLDER: InterpolatedLocation = { lat: 0, lng: 0 };
+
+function isFiniteLocation(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
 }
 
 const INTERPOLATION_DURATION_MS = 500; // Smoothly transition over 500ms
@@ -52,6 +70,8 @@ export function useDriverLocationSocket(
     lat: 0,
     lng: 0,
   });
+  // Driver the current `position` belongs to; null until the first fix.
+  const [fixedFor, setFixedFor] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +82,7 @@ export function useDriverLocationSocket(
     target: { lat: 0, lng: 0 },
     lastUpdateTime: 0,
     animationFrameId: null,
+    hasFix: false,
   });
 
   /**
@@ -103,11 +124,27 @@ export function useDriverLocationSocket(
       // Only process updates for this driver
       if (update.driverId !== driverId) return;
 
+      // Drop malformed coordinates rather than moving the marker to NaN
+      if (!isFiniteLocation(update.lat, update.lng)) return;
+
       const state = locationStateRef.current;
 
       // Cancel any ongoing animation
       if (state.animationFrameId !== null) {
         cancelAnimationFrame(state.animationFrameId);
+        state.animationFrameId = null;
+      }
+
+      // The first fix snaps into place; animating from the (0, 0) placeholder
+      // would sweep the marker across the globe.
+      if (!state.hasFix) {
+        state.hasFix = true;
+        state.current = { lat: update.lat, lng: update.lng };
+        state.target = { ...state.current };
+        state.lastUpdateTime = Date.now();
+        setPosition({ ...state.current });
+        setFixedFor(driverId);
+        return;
       }
 
       // Update timing and set new target
@@ -144,6 +181,17 @@ export function useDriverLocationSocket(
    * Setup and teardown of the WebSocket subscription.
    */
   useEffect(() => {
+    // A new driver must not inherit the previous driver's position or
+    // in-flight animation.
+    const locationState = locationStateRef.current;
+    if (locationState.animationFrameId !== null) {
+      cancelAnimationFrame(locationState.animationFrameId);
+      locationState.animationFrameId = null;
+    }
+    locationState.hasFix = false;
+    locationState.current = { ...ORIGIN_PLACEHOLDER };
+    locationState.target = { ...ORIGIN_PLACEHOLDER };
+
     // Subscribe to service
     const unsubscribe = driverTrackingService.subscribe({
       onLocationUpdate: handleLocationUpdate,
@@ -161,10 +209,9 @@ export function useDriverLocationSocket(
     // Cleanup on unmount
     return () => {
       // Cancel any pending animation frame
-      const state = locationStateRef.current;
-      if (state.animationFrameId !== null) {
-        cancelAnimationFrame(state.animationFrameId);
-        state.animationFrameId = null;
+      if (locationState.animationFrameId !== null) {
+        cancelAnimationFrame(locationState.animationFrameId);
+        locationState.animationFrameId = null;
       }
 
       // Unsubscribe from service
@@ -172,8 +219,11 @@ export function useDriverLocationSocket(
     };
   }, [handleLocationUpdate, handleConnectionStatusChange, handleError]);
 
+  const hasLocation = fixedFor === driverId;
+
   return {
-    position,
+    position: hasLocation ? position : ORIGIN_PLACEHOLDER,
+    hasLocation,
     connectionStatus,
     error,
   };

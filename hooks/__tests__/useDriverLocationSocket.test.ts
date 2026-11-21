@@ -353,11 +353,11 @@ describe('useDriverLocationSocket', () => {
         'cancelAnimationFrame',
       );
 
-      const { result } = renderHook(() =>
+      const { unmount } = renderHook(() =>
         useDriverLocationSocket('driver-123'),
       );
 
-      // Trigger an animation
+      // The first fix snaps into place; the second one starts an animation.
       act(() => {
         capturedSubscriber?.onLocationUpdate({
           driverId: 'driver-123',
@@ -365,6 +365,8 @@ describe('useDriverLocationSocket', () => {
           lng: 0,
           timestamp: 0,
         });
+      });
+      act(() => {
         capturedSubscriber?.onLocationUpdate({
           driverId: 'driver-123',
           lat: 10,
@@ -373,11 +375,10 @@ describe('useDriverLocationSocket', () => {
         });
       });
 
-      // Unmount should cancel the frame
-      const { unmount } = renderHook(() =>
-        useDriverLocationSocket('driver-123'),
-      );
+      // Reset so only the unmount cleanup can account for a call.
+      cancelAnimationFrameSpy.mockClear();
 
+      // Unmounting the same instance should cancel the pending frame
       unmount();
 
       // Should have been called to cleanup the animation
@@ -511,6 +512,98 @@ describe('useDriverLocationSocket', () => {
       await waitFor(() => {
         expect(result.current.position).toEqual({ lat: 10, lng: 10 });
       });
+    });
+  });
+
+  describe('first fix, loading guard and driver switching', () => {
+    it('reports hasLocation=false until a fix arrives', () => {
+      const { result } = renderHook(() => useDriverLocationSocket('driver-123'));
+      expect(result.current.hasLocation).toBe(false);
+
+      act(() => {
+        capturedSubscriber?.onLocationUpdate({
+          driverId: 'driver-123',
+          lat: 6.5,
+          lng: 3.3,
+          timestamp: 1,
+        });
+      });
+
+      expect(result.current.hasLocation).toBe(true);
+    });
+
+    it('snaps the first fix into place instead of animating from (0, 0)', () => {
+      const raf = jest.spyOn(window, 'requestAnimationFrame');
+      const { result } = renderHook(() => useDriverLocationSocket('driver-123'));
+
+      act(() => {
+        capturedSubscriber?.onLocationUpdate({
+          driverId: 'driver-123',
+          lat: 6.5,
+          lng: 3.3,
+          timestamp: 1,
+        });
+      });
+
+      // Immediately at the real position, with no animation frame scheduled
+      expect(result.current.position).toEqual({ lat: 6.5, lng: 3.3 });
+      expect(raf).not.toHaveBeenCalled();
+    });
+
+    it('ignores malformed coordinates', () => {
+      const { result } = renderHook(() => useDriverLocationSocket('driver-123'));
+
+      act(() => {
+        capturedSubscriber?.onLocationUpdate({
+          driverId: 'driver-123',
+          lat: NaN,
+          lng: 3.3,
+          timestamp: 1,
+        });
+        capturedSubscriber?.onLocationUpdate({
+          driverId: 'driver-123',
+          lat: 200,
+          lng: 3.3,
+          timestamp: 2,
+        });
+      });
+
+      expect(result.current.hasLocation).toBe(false);
+      expect(result.current.position).toEqual({ lat: 0, lng: 0 });
+    });
+
+    it('does not carry the previous driver position over after a driver change', () => {
+      const { result, rerender } = renderHook(
+        ({ driverId }) => useDriverLocationSocket(driverId),
+        { initialProps: { driverId: 'driver-1' } },
+      );
+
+      act(() => {
+        capturedSubscriber?.onLocationUpdate({
+          driverId: 'driver-1',
+          lat: 5,
+          lng: 5,
+          timestamp: 0,
+        });
+      });
+      expect(result.current.hasLocation).toBe(true);
+
+      rerender({ driverId: 'driver-2' });
+
+      expect(result.current.hasLocation).toBe(false);
+      expect(result.current.position).toEqual({ lat: 0, lng: 0 });
+
+      // The new driver's first fix snaps rather than sweeping from driver-1
+      act(() => {
+        capturedSubscriber?.onLocationUpdate({
+          driverId: 'driver-2',
+          lat: 10,
+          lng: 10,
+          timestamp: 1000,
+        });
+      });
+      expect(result.current.hasLocation).toBe(true);
+      expect(result.current.position).toEqual({ lat: 10, lng: 10 });
     });
   });
 });

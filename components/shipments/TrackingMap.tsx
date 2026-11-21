@@ -6,7 +6,6 @@
 
 'use client';
 
-import React, { useMemo } from 'react';
 import React, { useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -14,12 +13,10 @@ import 'leaflet/dist/leaflet.css';
 import { useTrackingRoute } from '@/hooks/useTrackingRoute';
 import { calculateDistanceKm } from '@/services/geofenceService';
 import { Coordinate, MapBounds, RouteData } from '@/types/tracking';
+import { boundsKey, computeBounds, isValidCoordinate } from '@/lib/mapViewport';
 import { AlertCircle, Loader2, Package } from 'lucide-react';
 
 const DEFAULT_AVERAGE_SPEED_KMH = 40;
-import { MapBounds } from '@/types/tracking';
-import { AlertCircle, Loader2, Package } from 'lucide-react';
-
 interface TrackingMapProps {
   deliveryId: string | null;
   className?: string;
@@ -102,16 +99,20 @@ export function calculateEstimatedDeliveryDate(
  */
 function FitBoundsHook({ bounds }: { bounds: MapBounds | null }) {
   const map = useMap();
+  // Re-fit only when the box actually changes, so unrelated re-renders (such as
+  // live location polling) never snap the viewport back while the user pans.
+  const key = boundsKey(bounds);
 
   useEffect(() => {
-    if (bounds && map) {
-      const leafletBounds = L.latLngBounds(
-        [bounds.south, bounds.west],
-        [bounds.north, bounds.east]
-      );
-      map.fitBounds(leafletBounds, { padding: [50, 50], maxZoom: 16 });
-    }
-  }, [bounds, map]);
+    if (!bounds || !map) return;
+    const leafletBounds = L.latLngBounds(
+      [bounds.south, bounds.west],
+      [bounds.north, bounds.east]
+    );
+    map.fitBounds(leafletBounds, { padding: [50, 50], maxZoom: 16 });
+    // `key` captures the bounds values; the object identity is irrelevant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, map]);
 
   return null;
 }
@@ -129,38 +130,46 @@ export function TrackingMap({
   const { routeData, currentLocation, isLoading, isError, error } =
     useTrackingRoute(deliveryId);
 
-  // Calculate map bounds from route data
+  // Only waypoints with valid coordinates may reach Leaflet, which throws on
+  // NaN/out-of-range values.
+  const validWaypoints = useMemo(
+    () => (routeData?.waypoints ?? []).filter((w) => isValidCoordinate(w?.coordinate)),
+    [routeData],
+  );
+
+  const hasValidEndpoints =
+    !!routeData &&
+    isValidCoordinate(routeData.origin) &&
+    isValidCoordinate(routeData.destination);
+
+  // The live location is deliberately excluded from the fitted bounds: it
+  // updates every few seconds and must not reset the user's viewport.
   const mapBounds: MapBounds | null = useMemo(() => {
     if (!routeData) return null;
-
-    const { origin, destination, waypoints } = routeData;
-    const coords = [origin, destination, ...waypoints.map((w) => w.coordinate)];
-    if (currentLocation && routeData.status === 'in_transit') {
-      coords.push(currentLocation);
-    }
-
-    const lats = coords.map((c) => c.latitude);
-    const lngs = coords.map((c) => c.longitude);
-
-    return {
-      north: Math.max(...lats),
-      south: Math.min(...lats),
-      east: Math.max(...lngs),
-      west: Math.min(...lngs),
-    };
-  }, [routeData, currentLocation]);
+    return computeBounds([
+      routeData.origin,
+      routeData.destination,
+      ...validWaypoints.map((w) => w.coordinate),
+    ]);
+  }, [routeData, validWaypoints]);
 
   // Create polyline coordinates
-  const polylineCoordinates: [number, number][] = useMemo(() => {
-    if (!routeData?.waypoints) return [];
+  const polylineCoordinates: [number, number][] = useMemo(
+    () => validWaypoints.map((w) => [w.coordinate.latitude, w.coordinate.longitude]),
+    [validWaypoints],
+  );
 
-    return routeData.waypoints.map((w) => [w.coordinate.latitude, w.coordinate.longitude]);
-  }, [routeData]);
+  // A malformed live fix is dropped rather than propagated into distance/ETA
+  // maths (which throws on invalid input) or onto the map.
+  const liveLocation: Coordinate | null = isValidCoordinate(currentLocation)
+    ? currentLocation
+    : null;
+  const showCurrentLocation = routeData?.status === 'in_transit' && liveLocation !== null;
 
   const dynamicEtaMinutes = useMemo(() => {
-    if (!routeData) return null;
-    return calculateRemainingEtaMinutes(routeData, currentLocation);
-  }, [routeData, currentLocation]);
+    if (!routeData || !hasValidEndpoints) return null;
+    return calculateRemainingEtaMinutes(routeData, liveLocation);
+  }, [routeData, hasValidEndpoints, liveLocation]);
 
   const estimatedDeliveryIso = useMemo(() => {
     if (!routeData) return null;
@@ -202,6 +211,17 @@ export function TrackingMap({
     []
   );
 
+  const checkpointMarkerIcon = useMemo(
+    () =>
+      L.icon({
+        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmNTk0MzAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTBjMCA3LTkgMTMtOSAxM3MtOSAtNi05IC0xM2E5IDkgMCAwIDEgMTggMHoiPjwvcGF0aD48Y2lyY2xlIGN4PSIxMiIgY3k9IjEwIiByPSIzIj48L2NpcmNsZT48L3N2Zz4=',
+        iconSize: [24, 24],
+        iconAnchor: [12, 24],
+        popupAnchor: [0, -24],
+      }),
+    []
+  );
+
   // Ensure Leaflet marker default icons resolve cleanly in Next.js
   useEffect(() => {
     const proto = L.Icon.Default.prototype as { _getIconUrl?: unknown };
@@ -233,8 +253,9 @@ export function TrackingMap({
     );
   }
 
-  // Error state
-  if (isError) {
+  // Error state: only block the map when there is no route to show. A failed
+  // live-location poll should not discard an already-loaded route.
+  if (isError && !routeData) {
     return (
       <div
         className={`flex items-center justify-center bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 ${className}`}
@@ -264,6 +285,26 @@ export function TrackingMap({
             className="w-8 h-8 text-gray-400 dark:text-gray-500"
           />
           <p className="text-sm text-gray-600 dark:text-gray-400">No delivery data available</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Invalid endpoints would make Leaflet throw during render and crash the page.
+  if (!hasValidEndpoints) {
+    return (
+      <div
+        className={`flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 ${className}`}
+        style={{ height }}
+      >
+        <div className="flex flex-col items-center gap-2 p-4">
+          <AlertCircle
+            data-testid="invalid-route-icon"
+            className="w-8 h-8 text-amber-500"
+          />
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Route coordinates are unavailable
+          </p>
         </div>
       </div>
     );
@@ -325,16 +366,16 @@ export function TrackingMap({
         </Marker>
 
         {/* Current location marker (when in transit) */}
-        {currentLocation && routeData.status === 'in_transit' && (
+        {showCurrentLocation && liveLocation && (
           <Marker
-            position={[currentLocation.latitude, currentLocation.longitude]}
+            position={[liveLocation.latitude, liveLocation.longitude]}
             icon={currentLocationIcon}
           >
             <Popup>
               <div className="text-sm">
                 <p className="font-semibold text-orange-700">Current Location</p>
                 <p data-testid="current-location-coordinates" className="text-gray-600">
-                  {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
+                  {liveLocation.latitude.toFixed(4)}, {liveLocation.longitude.toFixed(4)}
                 </p>
               </div>
             </Popup>
@@ -353,18 +394,13 @@ export function TrackingMap({
         )}
 
         {/* Checkpoint markers */}
-        {routeData.waypoints
+        {validWaypoints
           .filter((w) => w.type === 'checkpoint')
           .map((waypoint, idx) => (
             <Marker
               key={`checkpoint-${idx}`}
               position={[waypoint.coordinate.latitude, waypoint.coordinate.longitude]}
-              icon={L.icon({
-                iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmNTk0MzAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTBjMCA3LTkgMTMtOSAxM3MtOSAtNi05IC0xM2E5IDkgMCAwIDEgMTggMHoiPjwvcGF0aD48Y2lyY2xlIGN4PSIxMiIgY3k9IjEwIiByPSIzIj48L2NpcmNsZT48L3N2Zz4=',
-                iconSize: [24, 24],
-                iconAnchor: [12, 24],
-                popupAnchor: [0, -24],
-              })}
+              icon={checkpointMarkerIcon}
             >
               <Popup>
                 <div className="text-sm">
@@ -377,6 +413,16 @@ export function TrackingMap({
             </Marker>
           ))}
       </MapContainer>
+
+      {isError && error && (
+        <div
+          role="status"
+          data-testid="tracking-live-warning"
+          className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+        >
+          Live updates are unavailable: {error}
+        </div>
+      )}
 
       {/* Route info bar */}
       <div className="bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-3">
